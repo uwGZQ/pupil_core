@@ -13,11 +13,17 @@ import os
 import platform
 import sys
 
+# 冻结状态通常指的是将Python程序打包成独立可执行文件，以便在没有安装Python解释器的情况下运行。
 running_from_bundle = getattr(sys, "frozen", False)
+
+# 以python源码运行时，将shared_modules添加到sys.path中
 if not running_from_bundle:
+    # pupil/
     pupil_base_dir = os.path.abspath(__file__).rsplit("pupil_src", 1)[0]
+    # pupil/pupil_src, pupil/shared_modules
     sys.path.append(os.path.join(pupil_base_dir, "pupil_src", "shared_modules"))
 
+# locate in shared_modules
 from launchable_args import PupilArgParser
 
 # NOTE: hyphens (-) in the CLI args are converted to underscores (_) upon parsing, so

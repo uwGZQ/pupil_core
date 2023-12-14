@@ -19,6 +19,7 @@ def get_tag_commit() -> T.Optional[str]:
     returns string: 'tag'-'commits since tag'-'7 digit commit id'
     """
     try:
+        # run command: git describe --tags --long at absolute path of this file
         desc_tag = check_output(
             ["git", "describe", "--tags", "--long"],
             stderr=STDOUT,
@@ -34,10 +35,13 @@ def get_tag_commit() -> T.Optional[str]:
         logger.error(f'Could not call git, is it installed? error msg: "{e}"')
         return None
 
-
+# ParsedVersion can be either a LegacyVersion or a Version
+    # LegacyVersion is a outdated version of Version
+    # Version is conrresponding to PEP 440 (standard for versioning)
 ParsedVersion = T.Union[packaging.version.LegacyVersion, packaging.version.Version]
 
 
+# Parse the given version string and return either a :class:`Version` object or a :class:`LegacyVersion` object
 def parse_version(vstring: str) -> ParsedVersion:
     return packaging.version.parse(vstring)
 
@@ -53,6 +57,8 @@ def pupil_version_string() -> str:
     # NOTE: This returns the current version as read from the last git tag. Normally you
     # don't want to use this, but get_version() below, which also works in a bundled
     # version (without git).
+
+    # 
     version = get_tag_commit()
     if version is None:
         raise ValueError("Version Error")

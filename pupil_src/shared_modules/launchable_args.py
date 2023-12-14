@@ -16,7 +16,8 @@ from gettext import gettext as _
 
 class HelpfulArgumentParser(argparse.ArgumentParser):
     """ArgumentParser that prints the full help message on error."""
-
+    # How to print the help message on error
+    # prog: The name of the program (i.e. pupil_capture)
     def error(self, message: str):
         # NOTE: This is mostly argparse source code with slight adjustments
         args = {"prog": self.prog, "message": message}
@@ -38,6 +39,7 @@ class PupilArgParser:
 
         if running_from_bundle:
             self._init_bundle_parser(**defaults)
+        # Running from source - .py file
         else:
             self._init_source_parser(**defaults)
 
@@ -59,15 +61,23 @@ class PupilArgParser:
 
     def _init_source_parser(self, **defaults):
         # Add explicit subparsers for all apps to main parser
+        # 建立子解析器，并将通用参数和应用程序特定参数添加到子解析器中。
         subparser = self.main_parser.add_subparsers(
             dest="app", metavar="<app>", help="which application to start"
         )
+        # app: 设置一个属性来存储所选的子命令
+        # metavar: 于在帮助信息中显示子命令的占位符
+        # help: 用于生成帮助消息的子命令的简短描述
         subparser.required = True
 
+        # 子解析器的名称是应用程序的名称（例如，"capture"、"player"、"service"）。
         for app, description in self.apps.items():
             app_parser = subparser.add_parser(app, help=description)
+            # general args are added to each app
             self._add_general_args(app_parser)
+            # app specific args are added to each app
             self._add_app_args(app_parser, app)
+            # add defaults from main.py to each app
             app_parser.set_defaults(**defaults)
 
     def _add_general_args(self, parser: argparse.ArgumentParser):

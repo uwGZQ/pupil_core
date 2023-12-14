@@ -14,7 +14,9 @@ import signal
 import time
 from types import SimpleNamespace
 
-
+"""定义了一个名为 Is_Alive_Manager 的类。
+这个类是一个上下文管理器，用于包装 is_alive 标志。
+根据类的文档字符串，只要眼球追踪进程在运行，is_alive 标志就会保持为 True。"""
 class Is_Alive_Manager:
     """
     A context manager to wrap the is_alive flag.
@@ -22,12 +24,22 @@ class Is_Alive_Manager:
     """
 
     def __init__(self, is_alive, ipc_socket, eye_id, logger):
+        """
+        接受四个参数 is_alive、ipc_socket、eye_id 和 logger。
+        这些参数分别代表了进程的存活状态、进程间通信的套接字、
+        眼球追踪器的 ID 以及用于记录日志的对象。
+        这些参数在类的实例化过程中被赋值给类的实例变量，以便在类的其他方法中使用。
+        """
         self.is_alive = is_alive
         self.ipc_socket = ipc_socket
         self.eye_id = eye_id
         self.logger = logger
 
     def __enter__(self):
+        """
+        __enter__ 方法是上下文管理器的一部分，当进入 with 语句时，会被调用。
+        在这个方法中，将 is_alive 标志设置为 True，并通过 ipc_socket 发送一个通知，告知眼球追踪进程已经开始。
+        """
         self.is_alive.value = True
         self.ipc_socket.notify(
             {"subject": "eye_process.started", "eye_id": self.eye_id}
@@ -35,6 +47,11 @@ class Is_Alive_Manager:
         return self
 
     def __exit__(self, etype, value, traceback):
+        """
+        当退出 with 语句时，会被调用。如果在 with 语句中发生了异常，
+        etype、value 和 traceback 这三个参数就会被赋值。
+        在这个方法中，如果 etype 不为 None，则导入 traceback 模块。这个模块可以用于处理异常。
+        """
         if etype is not None:
             import traceback as tb
 
@@ -42,7 +59,13 @@ class Is_Alive_Manager:
                 f"Process Eye{self.eye_id} crashed with trace:\n"
                 + "".join(tb.format_exception(etype, value, traceback))
             )
-
+        """
+        无论是否发生异常，代码都会将 is_alive 标志设置为 False，
+        并通过 ipc_socket 发送一个通知，告知眼球追踪进程已经停止。
+        通知的主题是 "eye_process.stopped"，并包含了眼球追踪器的 ID。
+        最后，代码会暂停 1 秒钟，然后返回 True。
+        返回 True 表示不需要进一步传播异常，即使在 with 语句中确实发生了异常。
+        """
         self.is_alive.value = False
         self.ipc_socket.notify(
             {"subject": "eye_process.stopped", "eye_id": self.eye_id}
