@@ -32,6 +32,7 @@ class BackgroundCameraSharingManager:
         process_started_event = multiprocessing.Event()
         self.should_stop_running_event = multiprocessing.Event()
 
+        # 这个进程的目标函数是 self._event_loop
         self._background_process = multiprocessing.Process(
             name="Shared Camera Process",
             target=self._event_loop,
@@ -48,10 +49,14 @@ class BackgroundCameraSharingManager:
         )
         self._background_process.start()
 
+        # 如果 wait_for_process_start 为 True，则等待进程启动。
         if wait_for_process_start:
             process_started_event.wait()
 
     def stop(self):
+        """
+        它设置了 should_stop_running_event 事件，然后等待进程结束。如果进程在 5.0 秒内没有结束，那么它会强制终止进程。
+        """
         self.should_stop_running_event.set()
         self._background_process.join(timeout=5.0)
         if self.is_running:
@@ -60,6 +65,7 @@ class BackgroundCameraSharingManager:
             )
             self._background_process.terminate()
 
+    # 这个属性返回一个布尔值，表示后台进程是否正在运行
     @property
     def is_running(self) -> bool:
         return self._background_process.exitcode is None
@@ -75,6 +81,10 @@ class BackgroundCameraSharingManager:
         ipc_push_url: str,
         topic_prefix: str = "shared_camera.",
     ):
+        """
+        这个函数的主要工作是创建一个网络接口，然后进入一个循环，
+        不断处理网络订阅和通知，获取和发送相机帧，直到收到停止运行的事件。
+        """
         with NetworkInterface(
             topic_prefix=topic_prefix,
             ipc_pub_url=ipc_pub_url,

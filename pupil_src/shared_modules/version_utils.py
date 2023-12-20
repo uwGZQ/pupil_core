@@ -58,7 +58,6 @@ def pupil_version_string() -> str:
     # don't want to use this, but get_version() below, which also works in a bundled
     # version (without git).
 
-    # 
     version = get_tag_commit()
     if version is None:
         raise ValueError("Version Error")
@@ -70,11 +69,17 @@ def pupil_version_string() -> str:
             version = version_parsed.base_version
     except packaging.version.InvalidVersion:
         pass
+    # delete the leading 'v' from the version string
+        # for instance, 'v0.9.0-1-ga1b2c3d' -> '0.9.0-1-ga1b2c3d'
     version = version.replace("v", "")  # strip version 'v'
-    # print(version)
+    # split the version string into its parts
+        # for instance, '0.9.0-1-ga1b2c3d' -> 
+            # ['0.9.0', '1', 'ga1b2c3d'] -> 
+            # '0.9.0.1'
     if "-" in version:
         parts = version.split("-")
         version = ".".join(parts[:-1])
+    # if the version is a prerelease, append the prerelease tag
     if version_parsed.is_prerelease:
         version += "".join(map(str, version_parsed.pre))
     return version
@@ -86,9 +91,11 @@ def get_version():
         version_file = os.path.join(sys._MEIPASS, "_version_string_")
         with open(version_file) as f:
             version_string = f.read()
+    # running from source
     else:
         version_string = pupil_version_string()
     logger.debug(f"Running version: {version_string}")
+    # return the parsed version, such as
     return parse_version(version_string)
 
 
@@ -98,6 +105,7 @@ def write_version_file(target_dir: str) -> pathlib.Path:
     logger.debug(f"Writing Pupil Core version '{version_string}' to {version_file}")
     with open(version_file, "w") as f:
         f.write(version_string)
+    # return the path to the version file
     return pathlib.Path(version_file)
 
 

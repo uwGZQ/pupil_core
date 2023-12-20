@@ -36,15 +36,19 @@ default_args = {
     "port": 50020,
     "skip_driver_installation": False,
 }
+# parsed_args: 命名空间对象，包含已知参数的解析结果
+# unknown_args: list，包含未知参数
 parsed_args, unknown_args = PupilArgParser().parse(running_from_bundle, **default_args)
 
 # app version
 from version_utils import get_version
 
+# retrieve version from version file: Version class or LegacyVersion class
 app_version = get_version()
 if parsed_args.version:
     running_from = "bundle" if running_from_bundle else "source"
     version_message = (
+        # 让app这个参数字符串的首字母大写
         f"Pupil {parsed_args.app.capitalize()} version {app_version} ({running_from})"
     )
 
@@ -102,7 +106,7 @@ from ctypes import c_bool, c_double
 # threading and processing
 from multiprocessing import (
     Process,
-    Value,
+    Value,  # Value is a ctypes object that can be shared between processes
     active_children,
     freeze_support,
     set_start_method,
@@ -156,7 +160,11 @@ def launcher():
     """
 
     # Reliable msg dispatch to the IPC via push bridge.
+    # Defines a nested function pull_pub, which is responsible for receiving messages from a ZMQ PULL socket 
+    # and publishing them to a ZMQ PUB socket. 
+    # This function essentially acts as a message relay. 消息中继
     def pull_pub(ipc_pub_url, pull):
+        # Setup IPC to publish messages to other processes.
         ctx = zmq.Context.instance()
         pub = ctx.socket(zmq.PUB)
         pub.connect(ipc_pub_url)
@@ -166,6 +174,7 @@ def launcher():
             pub.send_multipart(m)
 
     # The delay proxy handles delayed notififications.
+    # delay_proxy, handles delayed notifications. It listens for notifications and dispatches them after a specified delay.
     def delay_proxy(ipc_pub_url, ipc_sub_url):
         ctx = zmq.Context.instance()
         sub = zmq_tools.Msg_Receiver(ctx, ipc_sub_url, ("delayed_notify",))
@@ -192,6 +201,7 @@ def launcher():
                     pub.notify(n)
 
     # Recv log records from other processes.
+    # This function sets up logging for the application. It configures logging handlers, formats, and levels, and receives log messages from other processes over a ZMQ socket.
     def log_loop(ipc_sub_url, log_level_debug):
         import logging
 
@@ -233,6 +243,7 @@ def launcher():
 
     ## IPC
     timebase = Value(c_double, 0)
+    # eye_procs_alive is a list of boolean values that indicate whether an eye process is running or not.
     eye_procs_alive = Value(c_bool, 0), Value(c_bool, 0)
 
     zmq_ctx = zmq.Context()
@@ -245,18 +256,22 @@ def launcher():
     # Binding IPC Backbone Sockets to URLs.
     # They are used in the threads started below.
     # Using them in the main thread is not allowed.
+
+    # 发布者
     xsub_socket = zmq_ctx.socket(zmq.XSUB)
     xsub_socket.bind(ipc_pub_url)
     ipc_pub_url = xsub_socket.last_endpoint.decode("utf8").replace(
         "0.0.0.0", "127.0.0.1"
     )
 
+    # 订阅者
     xpub_socket = zmq_ctx.socket(zmq.XPUB)
     xpub_socket.bind(ipc_sub_url)
     ipc_sub_url = xpub_socket.last_endpoint.decode("utf8").replace(
         "0.0.0.0", "127.0.0.1"
     )
 
+    # 管道是单向的，从PUSH端单向的向PULL端单向的推送数据流。
     pull_socket = zmq_ctx.socket(zmq.PULL)
     pull_socket.bind(ipc_push_url)
     ipc_push_url = pull_socket.last_endpoint.decode("utf8").replace(
@@ -265,19 +280,23 @@ def launcher():
 
     # Starting communication threads:
     # A ZMQ Proxy Device serves as our IPC Backbone
+        # This proxy acts as a central communication point, facilitating message exchange between XSUB and XPUB sockets.
     ipc_backbone_thread = Thread(
         target=zmq.proxy, args=(xsub_socket, xpub_socket), daemon=True
     )
     ipc_backbone_thread.start()
 
+        # Runs a thread that pulls messages from a PULL socket and publishes them to a PUB socket. This is a part of the IPC mechanism to relay messages from one part of the system to another.
     pull_pub = Thread(target=pull_pub, args=(ipc_pub_url, pull_socket), daemon=True)
     pull_pub.start()
 
+        # Initiates a logging thread which sets up logging handlers (file and console) and listens for logging messages on a ZMQ SUB socket. It processes these messages and logs them appropriately.
     log_thread = Thread(
         target=log_loop, args=(ipc_sub_url, parsed_args.debug), daemon=True
     )
     log_thread.start()
 
+        # tarts a thread for handling delayed notifications. It listens for specific messages and dispatches them after a delay, as specified in the messages.
     delay_thread = Thread(
         target=delay_proxy, args=(ipc_push_url, ipc_sub_url), daemon=True
     )
@@ -285,6 +304,7 @@ def launcher():
 
     del xsub_socket, xpub_socket, pull_socket
 
+    #  Each topic typically corresponds to a different function or component in the system
     topics = (
         "notify.eye_process.",
         "notify.player_process.",
@@ -297,7 +317,10 @@ def launcher():
         "notify.circle_detector_process.should_start",
         "notify.ipc_startup",
     )
+    # It is initialized with the ZMQ context (zmq_ctx), a subscription URL (ipc_sub_url), and the list of topics it should subscribe to (topics).
+    # This receiver will listen for messages sent over ZMQ that match any of the specified topics.
     cmd_sub = zmq_tools.Msg_Receiver(zmq_ctx, ipc_sub_url, topics=topics)
+    # This dispatcher is used to send messages to other parts of the application. It will publish messages that can be received by any subscriber listening to the corresponding topic.
     cmd_push = zmq_tools.Msg_Dispatcher(zmq_ctx, ipc_push_url)
 
     while True:
@@ -322,6 +345,12 @@ def launcher():
             {"subject": "player_drop_process.should_start", "rec_dir": rec_dir}
         )
 
+
+    # The main loop of the function. 
+        # It continuously checks for incoming messages and 
+        # handles them appropriately. 
+        # The Prevent_Idle_Sleep context manager is likely used to prevent the system from going into idle mode while the application is running.
+        # The loop handles notifications, starts/stops processes, and manages the application state.
     with Prevent_Idle_Sleep():
         try:
             while True:
@@ -354,6 +383,7 @@ def launcher():
                 p.join()
 
 
+# responsible for processing various notifications. It starts different processes based on the notifications, like eye tracking, player, world, etc., using the Process class from the multiprocessing module.
 def process_notification(
     topic,
     notification,
@@ -367,6 +397,7 @@ def process_notification(
     app_version,
     parsed_args,
 ):
+    # If the notification topic indicates that an eye process should start, it launches an eye tracking process with specific parameters.
     if "notify.eye_process.should_start" in topic:
         eye_id = notification["eye_id"]
         Process(

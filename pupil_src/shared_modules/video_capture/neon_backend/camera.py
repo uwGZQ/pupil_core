@@ -47,6 +47,7 @@ class NeonCameraInterface:
             uid = NeonCameraInterface.find_connected_device_uid(camera)
             if uid is None:
                 raise OSError(f"No matching camera with spec={camera} found")
+        print("camera: ", camera)
         capture = uvc.Capture(uid)
         capture.bandwidth_factor = camera.bandwidth_factor
         for mode in capture.available_modes:
@@ -82,6 +83,7 @@ class NeonCameraInterface:
             try:
                 spec = next(spec for spec in specs if spec.matches_device(device))
                 found.append((spec, device["uid"]))
+                # print(found)
             except StopIteration:
                 pass
         return found

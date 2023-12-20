@@ -14,9 +14,11 @@ import signal
 import time
 from types import SimpleNamespace
 
-"""定义了一个名为 Is_Alive_Manager 的类。
+"""
+定义了一个名为 Is_Alive_Manager 的类。
 这个类是一个上下文管理器，用于包装 is_alive 标志。
-根据类的文档字符串，只要眼球追踪进程在运行，is_alive 标志就会保持为 True。"""
+根据类的文档字符串，只要眼球追踪进程在运行，is_alive 标志就会保持为 True。
+"""
 class Is_Alive_Manager:
     """
     A context manager to wrap the is_alive flag.
@@ -31,7 +33,7 @@ class Is_Alive_Manager:
         这些参数在类的实例化过程中被赋值给类的实例变量，以便在类的其他方法中使用。
         """
         self.is_alive = is_alive
-        self.ipc_socket = ipc_socket
+        self.ipc_socket = ipc_socket # inter-process communication
         self.eye_id = eye_id
         self.logger = logger
 
@@ -41,12 +43,19 @@ class Is_Alive_Manager:
         在这个方法中，将 is_alive 标志设置为 True，并通过 ipc_socket 发送一个通知，告知眼球追踪进程已经开始。
         """
         self.is_alive.value = True
+        # Sends a notification through IPC socket that the eye process has started
         self.ipc_socket.notify(
             {"subject": "eye_process.started", "eye_id": self.eye_id}
         )
+        # return the instance of the class itself
         return self
 
     def __exit__(self, etype, value, traceback):
+        """
+        Called when exiting the with block. 
+        It handles exceptions, logs errors if any,
+        sets is_alive to False, and sends a notification that the eye process has stopped
+        """
         """
         当退出 with 语句时，会被调用。如果在 with 语句中发生了异常，
         etype、value 和 traceback 这三个参数就会被赋值。
@@ -115,48 +124,59 @@ def eye(
 
     # We deferr the imports becasue of multiprocessing.
     # Otherwise the world process each process also loads the other imports.
-    import zmq
+    import zmq # ZeroMQ
     import zmq_tools
 
     zmq_ctx = zmq.Context()
+    # ipc_socket是一个消息分发器，用于向 ipc_push_url 发送消息。
     ipc_socket = zmq_tools.Msg_Dispatcher(zmq_ctx, ipc_push_url)
+    # pupil_socket 是一个消息流，用于向 ipc_pub_url 发送消息，并设置了发布套接字的高水位线
     pupil_socket = zmq_tools.Msg_Streamer(zmq_ctx, ipc_pub_url, pub_socket_hwm)
+    # notify_sub 是一个消息接收器，用于从 ipc_sub_url 接收主题为 "notify" 的消息。
     notify_sub = zmq_tools.Msg_Receiver(zmq_ctx, ipc_sub_url, topics=("notify",))
 
     # logging setup
     import logging
 
+    # set OpenGL logger to only log errors
     logging.getLogger("OpenGL").setLevel(logging.ERROR)
+    # 获取了根日志记录器 logger
     logger = logging.getLogger()
+    # 清空了 logger 的处理器列表
     logger.handlers = []
     logger.setLevel(logging.NOTSET)
+        # ZMQ_handler is a handler that sends log records as serialized strings via zmq
     logger.addHandler(zmq_tools.ZMQ_handler(zmq_ctx, ipc_push_url))
     # create logger for the context of this function
-    logger = logging.getLogger(__name__)
+    # 可以在日志消息中清楚地看到每条日志消息来自于哪个模块，这对于调试和跟踪问题非常有帮助。
+    logger = logging.getLogger(__name__) # 这里的 __name__ 是 eye
 
+    # is_alive_flag is a shared value, which is a list, between processes.
     if is_alive_flag.value:
-        # indicates eye process that this is a duplicated startup
+        # indicates eye process that this is a duplicated startup, return the function
         logger.warning("Aborting redundant eye process startup")
         return
 
     with Is_Alive_Manager(is_alive_flag, ipc_socket, eye_id, logger):
-        # general imports
+        # Run the __enter__ method of the Is_Alive_Manager class.
+            # is_alive is set to True, ipc_socket sends a notification that the eye process has started        # general imports
         import traceback
 
         import cv2
 
         # display
-        import glfw
+        import glfw # 用于管理窗口、读取输入、处理事件等的库，常用于 OpenGL 的应用程序
         import numpy as np
         from gl_utils import GLFWErrorReporting
-        from OpenGL.GL import GL_COLOR_BUFFER_BIT
+        from OpenGL.GL import GL_COLOR_BUFFER_BIT # 这是一个 OpenGL 的常量,通常用于 glClear 函数来清除颜色缓冲区。
 
         GLFWErrorReporting.set_default()
 
-        import gl_utils
+        import gl_utils # OpenGL 的工具函数
 
         # monitoring
-        import psutil
+        # etrieving information on running processes and system utilization (CPU, memory, disks, network, sensors) in Python
+        import psutil 
         from av_writer import JPEG_Writer, MPEG_Writer, NonMonotonicTimestampError
         from background_helper import IPC_Logging_Task_Proxy
         from file_methods import Persistent_Dict
@@ -170,14 +190,15 @@ def eye(
             make_coord_system_pixel_based,
         )
         from methods import denormalize, normalize, timer
-        from ndsi import H264Writer
+        from ndsi import H264Writer # 用于写入 H264 视频的类
 
         # Plug-ins
         from plugin import Plugin_List
+        # 与瞳孔检测插件相关的变量或函数
         from pupil_detector_plugins import EVENT_KEY, available_detector_plugins
         from pyglui import cygl, graph, ui
         from pyglui.cygl.utils import Named_Texture
-        from roi import Roi
+        from roi import Roi # Region of Interest，ROI
 
         # helpers/utils
         from uvc import get_time_monotonic
@@ -186,6 +207,7 @@ def eye(
 
         IPC_Logging_Task_Proxy.push_url = ipc_push_url
 
+        # define signal handler for SIGINT
         def interrupt_handler(sig, frame):
             import traceback
 
@@ -194,6 +216,7 @@ def eye(
             # NOTE: Interrupt is handled in world/service/player which are responsible for
             # shutting down the eye process properly
 
+        # When receiving SIGINT, call the interrupt_handler function to log the traceback
         signal.signal(signal.SIGINT, interrupt_handler)
 
         # UI Platform tweaks
@@ -212,6 +235,8 @@ def eye(
         content_scale = 1.0
 
         # g_pool holds variables for this process
+        # SimpleNamespace 是 Python 的一个内置类，可以用于创建一个简单的对象，并动态地添加或修改其属性。
+        # 这里的 g_pool 可能用于存储这个进程的一些全局变量。
         g_pool = SimpleNamespace()
 
         # make some constants avaiable
@@ -221,7 +246,7 @@ def eye(
         g_pool.app = parent_application
         g_pool.eye_id = eye_id
         g_pool.process = f"eye{eye_id}"
-        g_pool.timebase = timebase
+        g_pool.timebase = timebase # The time of Process start
         g_pool.camera_render_size = None
         g_pool.skip_driver_installation = skip_driver_installation
 
@@ -241,19 +266,25 @@ def eye(
             from plugin import import_runtime_plugins
             from pupil_detector_plugins.detector_base_plugin import PupilDetectorPlugin
 
+            # import_runtime_plugins 从 plugins_path 路径中导入插件。这个函数可能会返回一个包含所有导入插件的列表
             plugins_path = os.path.join(g_pool.user_dir, "plugins")
 
             for plugin in import_runtime_plugins(plugins_path):
+                # 不是一个class则跳过
                 if not isinstance(plugin, type):
                     continue
+                # 不是一个 PupilDetectorPlugin 的子类则跳过
                 if not issubclass(plugin, PupilDetectorPlugin):
                     continue
+                # 是PupilDetectorPlugin则跳过
                 if plugin is PupilDetectorPlugin:
                     continue
+                # 确保只加载那些是 PupilDetectorPlugin 子类的插件
                 yield plugin
 
         available_detectors = available_detector_plugins()
         runtime_detectors = list(load_runtime_pupil_detection_plugins())
+        # 所有plugins
         plugins = (
             manager_classes
             + source_classes
@@ -290,16 +321,23 @@ def eye(
         ]
 
         def consume_events_and_render_buffer():
+            # Context switch to main window
+            """在 OpenGL 中，所有的渲染操作都是在某个上下文中进行的，
+            所以在进行渲染之前，需要先设置好上下文。"""
             glfw.make_context_current(main_window)
             clear_gl_screen()
 
+            # check if all items in g_pool.camera_render_size are > 0
             if all(c > 0 for c in g_pool.camera_render_size):
+                # set the size of OpenGL viewport
                 glViewport(0, 0, *g_pool.camera_render_size)
+                # !! 调用每一个插件的 gl_display 方法进行渲染
                 for p in g_pool.plugins:
                     p.gl_display()
-
+            #设置窗口的大小为window_size
             glViewport(0, 0, *window_size)
             # render graphs
+                # FPS and CPU Usage
             fps_graph.draw()
             cpu_graph.draw()
 
@@ -310,31 +348,40 @@ def eye(
                 # clipboard is None, might happen on startup
                 clipboard = ""
             g_pool.gui.update_clipboard(clipboard)
+            # 更新 GUI，并获取用户的输入
             user_input = g_pool.gui.update()
+            # 确保剪贴板的内容始终与用户的输入保持一致
             if user_input.clipboard != clipboard:
                 # only write to clipboard if content changed
                 glfw.set_clipboard_string(main_window, user_input.clipboard)
 
+            # handle button presses of mouses
             for button, action, mods in user_input.buttons:
+                # 获取相对于main_window的坐标
                 x, y = glfw.get_cursor_pos(main_window)
+                # 相对帧缓冲区的坐标
                 pos = gl_utils.window_coordinate_to_framebuffer_coordinate(
                     main_window, x, y, cached_scale=None
                 )
+                # 0-1之间的坐标
                 pos = normalize(pos, g_pool.camera_render_size)
+                # 坐标翻转检查
                 if g_pool.flip:
                     pos = 1 - pos[0], 1 - pos[1]
                 # Position in img pixels
+                    # 坐标反归一化，重新映射到图像坐标系
                 pos = denormalize(pos, g_pool.capture.frame_size)
 
+                # 遍历plugin，处理点击事件，如果有plugin处理了点击事件，则跳出遍历
                 for plugin in g_pool.plugins:
                     if plugin.on_click(pos, button, action):
                         break
-
+            # handle key presses of keyboard
             for key, scancode, action, mods in user_input.keys:
                 for plugin in g_pool.plugins:
                     if plugin.on_key(key, scancode, action, mods):
                         break
-
+            # handle char inputs 
             for char_ in user_input.chars:
                 for plugin in g_pool.plugins:
                     if plugin.on_char(char_):
@@ -344,6 +391,7 @@ def eye(
             glfw.swap_buffers(main_window)
 
         # Callback functions
+            # 当窗口大小发生变化时，会被调用，以更新窗口大小
         def on_resize(window, w, h):
             nonlocal window_size
             nonlocal content_scale
@@ -389,18 +437,23 @@ def eye(
             # Needed, to update the window buffer while resizing
             consume_events_and_render_buffer()
 
+        # 处理键盘按键的事件 - scancode 是按键的扫描码，action 是按键的动作（按下、释放或重复），mods 是按键的修饰键
         def on_window_key(window, key, scancode, action, mods):
             g_pool.gui.update_key(key, scancode, action, mods)
 
+        # 处理键盘字符输入的事件
         def on_window_char(window, char):
             g_pool.gui.update_char(char)
 
+        # 处理窗口最小化的事件
         def on_iconify(window, iconified):
             g_pool.iconified = iconified
 
+        # 处理鼠标点击的事件
         def on_window_mouse_button(window, button, action, mods):
             g_pool.gui.update_button(button, action, mods)
 
+        # 处理鼠标移动的事件
         def on_pos(window, x, y):
             x, y = gl_utils.window_coordinate_to_framebuffer_coordinate(
                 window, x, y, cached_scale=None
@@ -417,15 +470,18 @@ def eye(
             for p in g_pool.plugins:
                 p.on_pos(pos)
 
+        # 处理鼠标滚轮滚动的事件
         def on_scroll(window, x, y):
             g_pool.gui.update_scroll(x, y * scroll_factor)
 
+        # 处理文件拖拽的事件
         def on_drop(window, paths):
             for plugin in g_pool.plugins:
                 if plugin.on_drop(paths):
                     break
 
         # load session persistent settings
+        # A dict class that uses pickle to save inself to file
         session_settings = Persistent_Dict(
             os.path.join(g_pool.user_dir, f"user_settings_eye{eye_id}")
         )
@@ -573,6 +629,7 @@ def eye(
             if runtime_name not in plugins_to_load_names:
                 plugins_to_load.append((runtime_name, {}))
 
+        # plugins
         g_pool.plugins = Plugin_List(g_pool, plugins_to_load)
 
         if not g_pool.capture:
@@ -651,13 +708,23 @@ def eye(
 
         # Event loop
         window_should_close = False
+        with open(os.path.join(g_pool.user_dir, "eye_process_started_log.txt"), "w") as f:
+            f.write("eye process started")
+            f.write(f"plugins: {g_pool.plugins}")
+            f.write(f"captures:{g_pool.capture}")
+
+
         while not window_should_close:
+            # 收到新数据
             if notify_sub.new_data:
+                # topic, payload
                 t, notification = notify_sub.recv()
                 subject = notification["subject"]
+                # 指示眼睛处理过程应该停止的通知
                 if subject.startswith("eye_process.should_stop"):
                     if notification["eye_id"] == eye_id:
                         break
+                # 指示眼睛处理过程应该开始的通知
                 elif subject == "recording.started":
                     if notification["record_eye"] and g_pool.capture.online:
                         g_pool.rec_path = notification["rec_path"]
@@ -676,6 +743,7 @@ def eye(
                             )
                         else:
                             g_pool.writer = MPEG_Writer(video_path, start_time_synced)
+                # 指示眼睛处理过程应该停止的通知
                 elif subject == "recording.stopped":
                     if g_pool.writer:
                         logger.debug("Done recording.")
@@ -690,20 +758,24 @@ def eye(
                             )
                         finally:
                             g_pool.writer = None
+                
                 elif subject.startswith("meta.should_doc"):
+                    # ipc_socket.notify() 发送一个通知
                     ipc_socket.notify(
                         {
                             "subject": "meta.doc",
                             "actor": f"eye{eye_id}",
-                            "doc": eye.__doc__,
+                            "doc": eye.__doc__, # eye 对象的文档字符串
                         }
                     )
+                # 指示眼睛处理过程应该开始/结束发布帧的通知
                 elif subject.startswith("frame_publishing.started"):
                     should_publish_frames = True
                     frame_publish_format = notification.get("format", "jpeg")
                 elif subject.startswith("frame_publishing.stopped"):
                     should_publish_frames = False
                     frame_publish_format = "jpeg"
+                # 收到开始启动插件的通知
                 elif (
                     subject.startswith("start_eye_plugin")
                     and notification["target"] == g_pool.process
@@ -735,6 +807,7 @@ def eye(
                 plugin.recent_events(event)
 
             frame = event.get("frame")
+            # 如果收到了新的帧
             if frame:
                 if should_publish_frames:
                     try:
@@ -863,6 +936,7 @@ def eye_profiled(
     import cProfile
     import os
     import subprocess
+    # textwrap.dedent 函数用于删除字符串开始的任何公共的空格，即前缀
     from textwrap import dedent
 
     from .eye import eye
@@ -904,10 +978,14 @@ def eye_profiled(
             "parent_application": parent_application,
             "skip_driver_installation": skip_driver_installation,
         },
+        # 它locals()返回一个字典，表示当前局部符号表。这个字典中包含了所有在当前函数或方法中定义的局部变量。
         locals(),
+        # 性能分析的结果保存在 eye{eye_id}.pstats 文件中
         f"eye{eye_id}.pstats",
     )
+    # 使用 rsplit 函数将路径分割为两部分，分隔符是 "pupil_src"
     loc = os.path.abspath(__file__).rsplit("pupil_src", 1)
+    # gprof2dot文件路径
     gprof2dot_loc = os.path.join(loc[0], "pupil_src", "shared_modules", "gprof2dot.py")
     subprocess.call(
         "python "

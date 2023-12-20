@@ -63,7 +63,8 @@ class Base_Source(Plugin):
     Attributes:
         g_pool (object): Global container, see `Plugin.g_pool`
     """
-
+    # 类变量被修改，全局实例都会被修改
+    # class attributes, can be overwritten by inherited classes
     uniqueness = "by_base_class"
     order = 0.0
     icon_chr = chr(0xE412)
@@ -112,18 +113,19 @@ class Base_Source(Plugin):
         source_type = "Camera" if self.manual_mode else "Device"
         entries = [(None, f"Activate {source_type}")]
 
+        # 如果 manual_mode 为 True，则获取所有的摄像头；否则，获取所有的设备。
         for manager in self.g_pool.source_managers:
             if self.manual_mode:
                 sources = manager.get_cameras()
             else:
                 sources = manager.get_devices()
-
+            # 每个源都被添加到 entries 列表中
             for info in sources:
                 entries.append((info, info.label))
 
         if len(entries) == 1:
             entries.append((None, f"No {source_type}s Found!"))
-
+        # 然后返回这个列表的压缩（zip）版本
         return zip(*entries)
 
     def activate_source(self, source_info):
@@ -136,6 +138,9 @@ class Base_Source(Plugin):
 
     @manual_mode.setter
     def manual_mode(self, enable) -> None:
+        """
+        设置这个属性，如果你设置为 True，则源模式会被设置为 MANUAL，否则会被设置为 AUTO。
+        """
         new_mode = SourceMode.MANUAL if enable else SourceMode.AUTO
         if new_mode != self.g_pool.source_mode:
             logger.debug(f"Setting source mode: {new_mode.name}")
@@ -145,6 +150,7 @@ class Base_Source(Plugin):
         subject = notification["subject"]
 
         if subject == "backend.change_mode":
+            # 改变源模式；
             mode = SourceMode(notification["mode"])
             if mode != self.g_pool.source_mode:
                 self.g_pool.source_mode = mode
@@ -164,7 +170,7 @@ class Base_Source(Plugin):
 
         Do not overwrite this in inherited classes. Use ui_elements() instead.
         """
-
+        # 首先删除所有的菜单项
         del self.menu[:]
 
         if self.manual_mode:
@@ -179,6 +185,7 @@ class Base_Source(Plugin):
                 )
             )
 
+        # 添加一些源的设置到菜单
         self.menu.append(
             ui.Selector(
                 "selected_source",

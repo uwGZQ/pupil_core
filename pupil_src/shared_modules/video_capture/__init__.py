@@ -41,7 +41,6 @@ from .uvc_backend import UVC_Manager, UVC_Source
 
 logger = logging.getLogger(__name__)
 
-
 source_classes = [File_Source, UVC_Source, HMD_Streaming_Source, Neon_Eye_Cam_Source]
 manager_classes = [File_Manager, UVC_Manager, Neon_Manager]
 
