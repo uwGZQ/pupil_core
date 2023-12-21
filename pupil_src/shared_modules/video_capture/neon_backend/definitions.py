@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Protocol, TypedDict
 
-
+# 设备的唯一标识符、供应商 ID 和产品 ID。
 class UVCDeviceInfo(TypedDict):
     uid: str
     idVendor: int
@@ -54,7 +54,7 @@ MODULE_SPEC = CameraSpec(
     bandwidth_factor=0,
 )
 
-
+# 灰度图像、数据是否完全接收、索引和时间戳
 class GrayFrameProtocol(Protocol):
     gray: npt.NDArray[np.uint8]
     data_fully_received: bool

@@ -51,6 +51,10 @@ class BackgroundCameraSharingManager:
 
         # 如果 wait_for_process_start 为 True，则等待进程启动。
         if wait_for_process_start:
+            # 如果事件为设置状态，即process_started_event.set()，则返回 True，否则返回 False。
+                # set(): 将事件的状态设置为True，并通知所有处于等待状态的线程恢复运行（默认为False）
+                # clear(): 将事件的状态设置为False，所有的线程都将被阻塞
+                # is_set(): 判断事件的状态是否为True
             process_started_event.wait()
 
     def stop(self):
@@ -91,6 +95,7 @@ class BackgroundCameraSharingManager:
             ipc_sub_url=ipc_sub_url,
             ipc_push_url=ipc_push_url,
         ) as network, contextlib.suppress(KeyboardInterrupt):
+            # 忽略 KeyboardInterrupt 异常: contextlib.suppress
             process_started_event.set()
 
             camera_model = cm.Camera_Model.from_file(
@@ -104,14 +109,16 @@ class BackgroundCameraSharingManager:
 
             while not should_stop_running_event.is_set():
                 network.process_subscriptions()
+                # 当有订阅者时，才会启动相机
                 if network.num_subscribers > 0 and camera is None:
                     network.logger.debug("New subscriber(s) - start sharing camera")
-                    camera = NeonCameraInterface(MODULE_SPEC)
+                    camera = NeonCameraInterface(MODULE_SPEC) # 传入相机规格参数
                     last_status_update = time.perf_counter()
                     first_update = last_status_update
                     num_frames_recv = 0
                     num_frames_forwarded = 0
                     network.announce_camera_state(camera.controls)
+                # 没有订阅者时，关闭相机
                 elif network.num_subscribers == 0 and camera is not None:
                     camera.close()
                     camera = None
@@ -122,6 +129,7 @@ class BackgroundCameraSharingManager:
 
                 for topic, notification in network.process_notifications():
                     if (
+                        #  "neon_backend.shared_cam_state.change_request"
                         notification["subject"]
                         == NEON_SHARED_CAM_STATE_CHANGE_REQUEST_TOPIC
                     ):
@@ -155,6 +163,7 @@ class BackgroundCameraSharingManager:
                     network.send_eye_frame(split_frames.right, intrinsics, eye_id=0)
                     network.send_eye_frame(split_frames.left, intrinsics, eye_id=1)
                 now = time.perf_counter()
+                # 每隔 5.0 秒，就会打印一条调试信息，显示已经接收和转发的帧数，以及转发帧的平均帧率。
                 if now - last_status_update > 5.0:
                     network.announce_camera_state(camera.controls)
                     total_time = now - first_update

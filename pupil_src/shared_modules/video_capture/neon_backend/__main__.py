@@ -27,6 +27,7 @@ def main():
         topic_prefix=NEON_SHARED_EYE_FRAME_TOPIC,
     )
     with contextlib.suppress(KeyboardInterrupt):
+        # 等待子进程结束，然后再继续执行。
         manager._background_process.join()
     manager.stop()
 

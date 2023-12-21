@@ -47,7 +47,7 @@ class NeonCameraInterface:
             uid = NeonCameraInterface.find_connected_device_uid(camera)
             if uid is None:
                 raise OSError(f"No matching camera with spec={camera} found")
-        print("camera: ", camera)
+        # print("camera: ", camera)
         capture = uvc.Capture(uid)
         capture.bandwidth_factor = camera.bandwidth_factor
         for mode in capture.available_modes:
@@ -69,18 +69,22 @@ class NeonCameraInterface:
     @staticmethod
     def find_connected_device_uid(spec: CameraSpec) -> Optional[str]:
         try:
+            # find_all_connected_device_uids返回的是[Tuple[CameraSpec, str], ...], 取第一个元组的第二个元素, 即Uid
             return NeonCameraInterface.find_all_connected_device_uids((spec,))[0][1]
         except IndexError:
             return None
 
     @staticmethod
     def find_all_connected_device_uids(
+        # 接收一个可迭代的 CameraSpec 对象，如果没有提供这个参数，默认会查找 SCENE_CAM_SPEC 和 MODULE_SPEC
         specs: Iterable[CameraSpec] = (SCENE_CAM_SPEC, MODULE_SPEC)
     ) -> List[Tuple[CameraSpec, str]]:
+        # 包含uid: str, idVendor, idProduct
         devices: List[UVCDeviceInfo] = uvc.device_list()  # type: ignore
         found: List[Tuple[CameraSpec, str]] = []
         for device in devices:
             try:
+                # next 函数会返回第一个生成的规格。如果找到了匹配的规格，那么就将规格和设备的 UID 作为一个元组添加到 found 列表中
                 spec = next(spec for spec in specs if spec.matches_device(device))
                 found.append((spec, device["uid"]))
                 # print(found)

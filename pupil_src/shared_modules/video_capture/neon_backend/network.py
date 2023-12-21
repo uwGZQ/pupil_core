@@ -9,7 +9,7 @@ import zmq
 from typing_extensions import Literal
 
 from .definitions import (
-    NEON_SHARED_CAM_STATE_ANNOUNCEMENT_TOPIC,
+    NEON_SHARED_CAM_STATE_ANNOUNCEMENT_TOPIC, # "neon_backend.shared_eye_frame."
     DistortionCoeffs,
     GrayFrameProtocol,
     Intrinsics,
@@ -89,10 +89,17 @@ class NetworkInterface:
         timestamp_offset: float = 0.0,
     ):
         gray_frame_cached = shared_frame.gray
+
+        """
+        it checks if the entire frame data has been received. 
+        If not, it logs a debug message and exits the function early.
+        """
+
         if not shared_frame.data_fully_received:
             self.logger.debug("Frame data not fully received. Dropping.")
             return
 
+        # split the frame into two images (by width) and send them
         width_half = gray_frame_cached.shape[1] // 2
         left_frame = gray_frame_cached[:, :width_half]
         right_frame = gray_frame_cached[:, width_half:]
@@ -143,6 +150,15 @@ class NetworkInterface:
         timestamp: float,
         topic: str,
     ):
+        """
+        attribu:: image: npt.NDArray[np.uint8]
+        attribu:: projection_matrix: "ProjectionMatrix"
+        attribu:: distortion_coeffs 畸变系数: "DistortionCoeffs"
+        attribu:: format_ 图像格式: Literal["bgr", "gray"]
+        attribu:: index 索引: int
+        attribu:: timestamp 时间戳: float
+        attribu:: topic 主题: str
+        """
         height, width, *_ = image.shape
         self.ipc_pub.send(
             {
@@ -159,18 +175,26 @@ class NetworkInterface:
         )
 
     def process_subscriptions(self):
+        # ipc_pub 的 socket 是否有输入事件
         while self.ipc_pub.socket.get(zmq.EVENTS) & zmq.POLLIN:
+            # 如果有，它会接收多部分消息
             subscription, *_ = self.ipc_pub.socket.recv_multipart()
+            # 如果订阅的主题以 0x01 开头，它会增加订阅者的数量
             if subscription.startswith(b"\x01" + self.topic_prefix.encode()):
                 self.num_subscribers += 1
+            # 如果订阅的主题以 0x00 开头，它会减少订阅者的数量
             elif subscription.startswith(b"\x00" + self.topic_prefix.encode()):
                 self.num_subscribers = max(self.num_subscribers - 1, 0)
 
     def process_notifications(self) -> Iterator[Tuple[str, Dict[str, Any]]]:
+        # 用于处理通知的函数，它会在每次调用时返回一个迭代器. 如果有通知，它会接收并返回消息。
         while self.notify_sub.socket.get(zmq.EVENTS) & zmq.POLLIN:
             yield self.notify_sub.recv()
 
     def announce_camera_state(self, state: Dict[str, Any]):
+        """
+        用于公告相机状态。它首先创建一个包含主题、连接状态和其他状态信息的通知字典，然后打印一条调试信息，最后通过 notify_push 发送通知。
+        """
         notification = {
             "subject": NEON_SHARED_CAM_STATE_ANNOUNCEMENT_TOPIC,
             "connected": bool(state),
